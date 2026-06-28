@@ -1,15 +1,15 @@
-`.github/workflows/fetch_prices.yml`
-name: Fetch portfolio prices
+`.github/workflows/fetch_prices.yml`name: Fetch portfolio prices
 
 on:
   schedule:
-    # Runs Monday–Friday at 9:00 PM UTC = 4:00 PM PT / 5:00 PM ET (after market close)
-    - cron: '0 21 * * 1-5'
-  workflow_dispatch:   # lets you also trigger it manually from GitHub anytime
+    - cron: '15 21 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Check out repo
@@ -23,13 +23,13 @@ jobs:
       - name: Install dependencies
         run: pip install yfinance
 
-      - name: Run price fetcher
+      - name: Fetch prices
         run: python fetch_prices.py portfolio_template.csv prices.json
 
-      - name: Commit and push prices.json
+      - name: Commit prices.json
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add prices.json
-          git diff --cached --quiet || git commit -m "Auto-update prices.json $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git diff --cached --quiet || git commit -m "Auto-update prices $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push
