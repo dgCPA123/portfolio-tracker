@@ -61,7 +61,7 @@ def load_positions(path):
                 "ticker": row["ticker"].upper().strip(),
                 "platform": row.get("platform", "Unknown"),
                 "shares": float(row["shares"]),
-                "cost": float(row["avg_cost"]),
+                "cost": float(row["Avg Cost"]),
             })
     return positions
 
