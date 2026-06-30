@@ -918,7 +918,7 @@ async function openDetail(ticker){
   const bearCount=tw.filter(t=>t.badge==='BEARISH'||t.badge==='LOSS').length;
   const total=tw.length;
   if(bullCount>=total-1) blText=`Broadly bullish setup. ${bullCount} of ${total} indicators positive. OBV and trend alignment support holding or adding.${r.opts&&r.opts.pcr<0.7?' Options flow confirms with heavy call buying.':''} Key risk: watch RSI if it approaches 70.`;
-  else if(bearCount>=total-1) blText=`Broadly bearish setup. ${bearCount} of ${total} indicators negative. OBV distribution and MA breakdown suggest real selling pressure.${r.opts&&r.opts.pcr>1.2?' Heavy put buying in options confirms bearish positioning.'':''} Monitor for OBV to flatten before re-entry.`;
+  else if(bearCount>=total-1) blText=`Broadly bearish setup. ${bearCount} of ${total} indicators negative. OBV distribution and MA breakdown suggest real selling pressure.${r.opts&&r.opts.pcr>1.2?' Heavy put buying in options confirms bearish positioning.':''} Monitor for OBV to flatten before re-entry.`;
   else if(bullCount>bearCount) blText=`Cautiously bullish. Mixed signals but slight edge to buyers (${bullCount}B/${bearCount}S). Confirm with volume — look for OBV uptick and MACD histogram expanding green before adding.`;
   else blText=`Mixed signals with slight bearish lean (${bullCount}B/${bearCount}S). Hold current position; avoid adding until MA50 is reclaimed and MACD crosses back above signal line.`;
 
