@@ -252,6 +252,7 @@ tr:hover td{background:var(--surface2);cursor:pointer}
                 <th onclick="sortH('pnl',this)">P&L $ ↕</th>
                 <th onclick="sortH('pct',this)">Since Inception ↕</th>
                 <th onclick="sortH('dayPct',this)">Day P&L % ↕</th>
+                <th>Options Flow</th>
                 <th>Signal</th>
                 <th>Bottom Line</th>
                 <th></th>
@@ -276,6 +277,9 @@ tr:hover td{background:var(--surface2);cursor:pointer}
 
           <!-- Stat cards -->
           <div class="stat-cards" id="stat-cards"></div>
+
+          <!-- Options Flow -->
+          <div class="news-detail" id="options-flow" style="margin-bottom:12px"></div>
 
           <!-- News for this stock -->
           <div class="news-detail" id="stock-news"></div>
@@ -382,7 +386,7 @@ function showCfgErr(msg){const e=document.getElementById('cfg-error');e.textCont
 // ═══════════════════════════════════════════════
 // DATA
 // ═══════════════════════════════════════════════
-let POS=[],PRICES={},CLOSES={},VOLS={},PREV_CLOSES={},ROWS=[];
+let POS=[],PRICES={},CLOSES={},VOLS={},DATES={},OPTIONS={},PREV_CLOSES={},ROWS=[];
 
 async function fetchAndInit(){
   const cfg=loadConfig();
@@ -408,17 +412,20 @@ async function fetchAndInit(){
 
 function ingestData(data){
   POS=(data.positions||[]).map(p=>({t:p.ticker,pl:p.platform,sh:parseFloat(p.shares),cost:parseFloat(p.cost)}));
-  CLOSES={};VOLS={};PRICES={};PREV_CLOSES={};
+  CLOSES={};VOLS={};PRICES={};PREV_CLOSES={};DATES={};OPTIONS={};
   Object.entries(data.prices||{}).forEach(([ticker,info])=>{
     const hist=info.history||[];
     const closes=hist.map(h=>h.price).filter(p=>!isNaN(p)&&p>0);
     const vols=hist.map(h=>h.vol||0);
+    const dates=hist.filter(h=>!isNaN(h.price)&&h.price>0).map(h=>h.date||'');
     const lastClose=closes.length?closes[closes.length-1]:0;
     const prevClose=closes.length>1?closes[closes.length-2]:lastClose;
     PRICES[ticker]=(info.price&&!isNaN(info.price)&&info.price>0)?info.price:lastClose;
     CLOSES[ticker]=closes;
     VOLS[ticker]=vols.slice(0,closes.length);
+    DATES[ticker]=dates;
     PREV_CLOSES[ticker]=prevClose;
+    OPTIONS[ticker]=info.options||null;
   });
   POS.forEach(p=>{if(!PRICES[p.t])PRICES[p.t]=p.cost;});
 }
@@ -531,11 +538,29 @@ function computeRow(p,idx){
   else blParts.push('MACD bearish');
   if(obvTrend)blParts.push('OBV accumulating');
   else blParts.push('OBV distributing');
-  const bottomLine=blParts.join(' · ');
+
+  // Options data
+  const opts = OPTIONS[p.t] || null;
+  let optsSig = 'n/a', optsColor = 'var(--muted)';
+  let optsSurge = false;
+  if (opts) {
+    const pcr = opts.pcr;
+    if (pcr !== null) {
+      if (pcr < 0.7) { optsSig = 'Bullish'; optsColor = 'var(--green)'; }
+      else if (pcr > 1.2) { optsSig = 'Bearish'; optsColor = 'var(--red)'; }
+      else { optsSig = 'Neutral'; optsColor = 'var(--amber)'; }
+    }
+    // Surge: total options vol > 2x typical (rough heuristic using stock vol avg)
+    const avgStockVol = vols.slice(-20).reduce((a,b)=>a+b,0)/20;
+    optsSurge = opts.total_vol > 0 && avgStockVol > 0 && opts.total_vol > avgStockVol * 0.01;
+  }
+
+  blParts.push(opts?.pcr != null ? `PCR ${opts.pcr}` : 'No options');
+  const bottomLine = blParts.join(' · ');
 
   return{...p,pr,val,pnl,pct,dayPct,dayPnl,sig,trend,lastRsi,lastMacd,lastSig,lastM20,lastM50,lastM200,
     closes,vols,m20,m50,m200,rsiArr,macdLine,macdSig,macdHist,obvArr,volMa20,obvMa20,
-    lastObv,lastObvMa,obvTrend,bull,bear,bottomLine,idx};
+    lastObv,lastObvMa,obvTrend,bull,bear,bottomLine,opts,optsSig,optsColor,optsSurge,idx};
 }
 
 // ═══════════════════════════════════════════════
@@ -594,11 +619,10 @@ async function renderNewsBar(){
   return news;
 }
 
-function renderStockNews(news,ticker){
+function renderStockNewsInner(news,ticker){
   const relevant=news.filter(n=>!n.tickers.length||n.tickers.includes(ticker));
   const items=relevant.length?relevant:news;
-  return`<div class="news-detail">
-    <div class="news-detail-title">📰 Today's relevant news</div>
+  return`<div class="news-detail-title">📰 Today's relevant news</div>
     ${items.slice(0,2).map(n=>`
       <div class="news-detail-item">
         <span class="news-detail-tag ${n.sentiment==='bullish'?'news-tag-green':n.sentiment==='bearish'?'news-tag-red':'news-tag-blue'}">${n.sentiment.toUpperCase()}</span>
@@ -606,8 +630,7 @@ function renderStockNews(news,ticker){
           <div class="news-detail-headline">${n.headline}</div>
           <div class="news-detail-body">${n.summary}</div>
         </div>
-      </div>`).join('')}
-  </div>`;
+      </div>`).join('')}`;
 }
 
 // ═══════════════════════════════════════════════
@@ -678,6 +701,7 @@ function renderHoldings(){
       <td class="${r.pnl>=0?'g':'r'}">${r.pnl>=0?'+':'−'}$${fmt(Math.abs(r.pnl))}</td>
       <td class="${r.pct>=0?'g':'r'}" style="font-weight:600">${r.pct>=0?'+':''}${r.pct.toFixed(1)}%</td>
       <td class="${r.dayPct>=0?'g':'r'}">${r.dayPct>=0?'+':''}${r.dayPct.toFixed(2)}%</td>
+      <td>${r.opts ? `<span style="font-family:var(--mono);font-size:11px;color:${r.optsColor};font-weight:600">PCR ${r.opts.pcr??'—'}</span><br><span style="font-size:10px;color:var(--muted)">${fmtSI(r.opts.call_vol)}C / ${fmtSI(r.opts.put_vol)}P${r.optsSurge?' 🔥':''}</span>` : '<span style="color:var(--dim);font-size:11px">—</span>'}</td>
       <td><span class="sig-badge sig-${r.sig}">${r.sig.toUpperCase()}</span></td>
       <td><div class="bl-cell" title="${r.bottomLine}">${r.bottomLine}</div></td>
       <td><button class="detail-btn" onclick="event.stopPropagation();openDetail('${r.t}')">Analyze →</button></td>
@@ -701,7 +725,25 @@ let cachedNews=[];
 async function openDetail(ticker){
   const r=ROWS.find(x=>x.t===ticker);if(!r)return;
   const col=PALETTE[r.idx%PALETTE.length],n=r.closes.length;
-  const labels=r.closes.map((_,i)=>i%20===0?`d${i+1}`:'');
+  // Build date labels — show month start + first day of each week, blank otherwise
+  const rawDates=DATES[r.t]||r.closes.map((_,i)=>'');
+  const labels=rawDates.map((d,i)=>{
+    if(!d) return i%20===0?`D${i+1}`:'';
+    const dt=new Date(d+'T00:00:00');
+    const prev=i>0?new Date(rawDates[i-1]+'T00:00:00'):null;
+    // Show label if: first data point, month changed, or Monday (day=1)
+    const monthChanged=!prev||dt.getMonth()!==prev.getMonth();
+    const isMonday=dt.getDay()===1;
+    if(i===0||monthChanged) return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    if(isMonday&&i%4===0) return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    return '';
+  });
+
+  // Always destroy all charts first before updating anything
+  ['c-price','c-rsi','c-macd','c-vol','c-obv'].forEach(id=>{if(dCharts[id]){dCharts[id].destroy();delete dCharts[id];}});
+
+  // Make sure panel is open so canvas elements are in DOM
+  document.getElementById('detail-panel').classList.add('open');
 
   document.querySelectorAll('.ticker-item').forEach(e=>e.classList.remove('active'));
   const sb=document.getElementById(`sb-${ticker}`);if(sb)sb.classList.add('active');
@@ -725,9 +767,74 @@ async function openDetail(ticker){
     <div class="stat-card"><div class="stat-label">RSI (14)</div><div class="stat-value ${r.lastRsi<30?'g':r.lastRsi>70?'r':'a'}">${r.lastRsi.toFixed(0)}</div><div class="stat-sub">${r.lastRsi<30?'Oversold':r.lastRsi>70?'Overbought':'Neutral'}</div></div>
     <div class="stat-card"><div class="stat-label">OBV Trend</div><div class="stat-value ${r.obvTrend?'g':'r'}">${r.obvTrend?'↑ Accum':'↓ Dist'}</div><div class="stat-sub">${r.obvTrend?'Buyers in control':'Sellers dominant'}</div></div>`;
 
+  // Options Flow
+  const opts = r.opts;
+  if (opts) {
+    const pcr = opts.pcr;
+    const pcrColor = pcr < 0.7 ? 'var(--green)' : pcr > 1.2 ? 'var(--red)' : 'var(--amber)';
+    const pcrLabel = pcr < 0.7 ? 'Bullish — heavy call buying' : pcr > 1.2 ? 'Bearish — heavy put buying' : 'Neutral — balanced flow';
+    const totalVol = opts.total_vol;
+    const callPct = totalVol > 0 ? (opts.call_vol / totalVol * 100).toFixed(0) : 50;
+    const putPct  = totalVol > 0 ? (opts.put_vol  / totalVol * 100).toFixed(0) : 50;
+    const ivColor = opts.iv > 50 ? 'var(--red)' : opts.iv > 30 ? 'var(--amber)' : 'var(--green)';
+    const ivLabel = opts.iv > 50 ? 'Elevated — options expensive' : opts.iv > 30 ? 'Moderate' : 'Low — options cheap';
+    const topCallsHTML = (opts.top_calls||[]).map(c=>`<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;border-top:1px solid var(--border)"><span style="color:var(--muted)">$${c.strike} strike</span><span style="color:var(--green)">${fmtSI(c.volume)} vol &nbsp; IV ${c.iv}%</span></div>`).join('');
+    const topPutsHTML  = (opts.top_puts||[]).map(c=>`<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:11px;border-top:1px solid var(--border)"><span style="color:var(--muted)">$${c.strike} strike</span><span style="color:var(--red)">${fmtSI(c.volume)} vol &nbsp; IV ${c.iv}%</span></div>`).join('');
+    const surgeHTML = r.optsSurge ? `<span style="background:var(--amber-dim);color:var(--amber);font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:6px">🔥 VOLUME SURGE</span>` : '';
+    document.getElementById('options-flow').innerHTML=`
+      <div class="news-detail-title">📊 Options Flow &nbsp;·&nbsp; <span style="color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0">Expiry: ${opts.expiry}</span>${surgeHTML}</div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+        <div style="background:var(--surface2);border-radius:6px;padding:9px 11px">
+          <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Put/Call Ratio</div>
+          <div style="font-size:20px;font-weight:700;font-family:var(--mono);color:${pcrColor}">${pcr??'—'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">${pcrLabel}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:6px;padding:9px 11px">
+          <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Call Volume</div>
+          <div style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--green)">${fmtSI(opts.call_vol)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">OI: ${fmtSI(opts.call_oi)}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:6px;padding:9px 11px">
+          <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Put Volume</div>
+          <div style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--red)">${fmtSI(opts.put_vol)}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">OI: ${fmtSI(opts.put_oi)}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:6px;padding:9px 11px">
+          <div style="font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Implied Volatility</div>
+          <div style="font-size:20px;font-weight:700;font-family:var(--mono);color:${ivColor}">${opts.iv??'—'}%</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:3px">${ivLabel}</div>
+        </div>
+      </div>
+      <!-- Call/Put volume bar -->
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px">
+          <span>Calls ${callPct}%</span><span>Puts ${putPct}%</span>
+        </div>
+        <div style="display:flex;height:8px;border-radius:4px;overflow:hidden">
+          <div style="flex:${callPct};background:rgba(34,197,94,.6)"></div>
+          <div style="flex:${putPct};background:rgba(239,68,68,.6)"></div>
+        </div>
+      </div>
+      <!-- Top strikes -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--green);letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px">🟢 Top call strikes</div>
+          ${topCallsHTML||'<div style="font-size:11px;color:var(--dim)">No data</div>'}
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--red);letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px">🔴 Top put strikes</div>
+          ${topPutsHTML||'<div style="font-size:11px;color:var(--dim)">No data</div>'}
+        </div>
+      </div>`;
+  } else {
+    document.getElementById('options-flow').innerHTML=`
+      <div class="news-detail-title">📊 Options Flow</div>
+      <div style="font-size:12px;color:var(--dim);padding:8px 0">No options data available for ${ticker}. This may be an ETF without listed options, or data wasn't fetched yet. Re-run fetch_prices.py to update.</div>`;
+  }
+
   // News
   if(!cachedNews.length) cachedNews=await fetchNews(POS.map(p=>p.t));
-  document.getElementById('stock-news').outerHTML=renderStockNews(cachedNews,ticker);
+  document.getElementById('stock-news').innerHTML=renderStockNewsInner(cachedNews,ticker);
 
   // Indicator cards
   const inds=[
@@ -748,9 +855,6 @@ async function openDetail(ticker){
         ${ind.bar!=null?`<div class="ta-bar"><div class="ta-bar-fill" style="width:${(ind.bar*100).toFixed(0)}%;background:${ind.c}"></div></div>`:''}
       </div>
     </div>`).join('');
-
-  // Destroy old charts
-  ['c-price','c-rsi','c-macd','c-vol','c-obv'].forEach(id=>{if(dCharts[id]){dCharts[id].destroy();delete dCharts[id];}});
 
   document.getElementById('rsi-val-label').textContent=r.lastRsi?r.lastRsi.toFixed(1):'';
   document.getElementById('rsi-val-label').style.color=r.lastRsi<30?'var(--green)':r.lastRsi>70?'var(--red)':'var(--amber)';
@@ -795,6 +899,16 @@ async function openDetail(ticker){
     {badge:r.lastRsi<30?'BULLISH':r.lastRsi>70?'BEARISH':'NEUTRAL',bc:r.lastRsi<30?'sig-buy':r.lastRsi>70?'sig-sell':'sig-hold',l:'RSI',t:r.lastRsi<30?`RSI at ${r.lastRsi.toFixed(1)} — deeply oversold. Historical mean-reversion zone. Watch for uptick above 35 as confirmation.`:r.lastRsi>70?`RSI at ${r.lastRsi.toFixed(1)} — overbought. Momentum stretched. Risk of near-term pullback; consider tightening stops.`:`RSI at ${r.lastRsi.toFixed(1)} — neutral. No extreme reading. Watch for break above 60 (bullish momentum) or below 40 (bearish).`},
     {badge:r.lastMacd>r.lastSig?'BULLISH':'BEARISH',bc:r.lastMacd>r.lastSig?'sig-buy':'sig-sell',l:'MACD',t:r.lastMacd>r.lastSig?`MACD line (${r.lastMacd.toFixed(3)}) above signal (${r.lastSig.toFixed(3)}) — positive momentum. Histogram expanding confirms strength.`:`MACD (${r.lastMacd.toFixed(3)}) below signal (${r.lastSig.toFixed(3)}) — negative momentum. Watch histogram for narrowing as a potential reversal signal.`},
     {badge:r.obvTrend?'BULLISH':'BEARISH',bc:r.obvTrend?'sig-buy':'sig-sell',l:'Volume / OBV',t:r.obvTrend?`OBV trending above its MA20 — institutional accumulation detected. Volume on up-days exceeds down-days, confirming buyers are in control.`:`OBV below MA20 — distribution underway. Sell volume dominating, suggesting smart money is reducing exposure. No capitulation spike visible yet.`},
+    ...( r.opts ? [{
+      badge: r.opts.pcr < 0.7 ? 'BULLISH' : r.opts.pcr > 1.2 ? 'BEARISH' : 'NEUTRAL',
+      bc:    r.opts.pcr < 0.7 ? 'sig-buy'  : r.opts.pcr > 1.2 ? 'sig-sell'  : 'sig-hold',
+      l:'Options Flow',
+      t: r.opts.pcr < 0.7
+        ? `PCR ${r.opts.pcr} — heavy call buying (${fmtSI(r.opts.call_vol)} calls vs ${fmtSI(r.opts.put_vol)} puts). Market participants are positioned bullishly. Watch for follow-through in price.`
+        : r.opts.pcr > 1.2
+        ? `PCR ${r.opts.pcr} — heavy put buying (${fmtSI(r.opts.put_vol)} puts vs ${fmtSI(r.opts.call_vol)} calls). Could signal hedging by institutions or directional bearish bets. IV at ${r.opts.iv}%.`
+        : `PCR ${r.opts.pcr} — balanced options flow (${fmtSI(r.opts.call_vol)} calls / ${fmtSI(r.opts.put_vol)} puts). No strong directional bet from options market. IV at ${r.opts.iv}%.`,
+    }] : [] ),
     {badge:r.pct>0?'PROFIT':'LOSS',bc:r.pct>0?'sig-buy':'sig-sell',l:'P&L',t:`${r.pct>=0?'Up':'Down'} ${Math.abs(r.pct).toFixed(1)}% since inception ($${r.cost.toFixed(2)} avg). Today ${r.dayPct>=0?'+':''}${r.dayPct.toFixed(2)}% ($${r.dayPnl>=0?'+':''}${r.dayPnl.toFixed(2)}). Current value $${fmt(r.val)} on ${r.sh} shares.`},
   ];
 
@@ -802,10 +916,11 @@ async function openDetail(ticker){
   let blText='';
   const bullCount=tw.filter(t=>t.badge==='BULLISH'||t.badge==='PROFIT').length;
   const bearCount=tw.filter(t=>t.badge==='BEARISH'||t.badge==='LOSS').length;
-  if(bullCount>=4) blText=`Broadly bullish setup. ${r.bull} of 5 indicators point positive. OBV and trend alignment support the case for holding or adding. Key risk: watch RSI if it approaches 70.`;
-  else if(bearCount>=4) blText=`Broadly bearish setup. ${r.bear} of 5 indicators point negative. OBV distribution and MA breakdown suggest real selling pressure — not just a technical pause. Monitor for OBV to flatten before re-entry.`;
-  else if(bullCount>bearCount) blText=`Cautiously bullish. Mixed signals but slight edge to buyers. Confirm with volume — look for OBV uptick and MACD histogram expanding green before adding.`;
-  else blText=`Mixed signals with slight bearish lean. Hold current position; avoid adding until MA50 is reclaimed and MACD crosses back above signal line.`;
+  const total=tw.length;
+  if(bullCount>=total-1) blText=`Broadly bullish setup. ${bullCount} of ${total} indicators positive. OBV and trend alignment support holding or adding.${r.opts&&r.opts.pcr<0.7?' Options flow confirms with heavy call buying.':''} Key risk: watch RSI if it approaches 70.`;
+  else if(bearCount>=total-1) blText=`Broadly bearish setup. ${bearCount} of ${total} indicators negative. OBV distribution and MA breakdown suggest real selling pressure.${r.opts&&r.opts.pcr>1.2?' Heavy put buying in options confirms bearish positioning.'':''} Monitor for OBV to flatten before re-entry.`;
+  else if(bullCount>bearCount) blText=`Cautiously bullish. Mixed signals but slight edge to buyers (${bullCount}B/${bearCount}S). Confirm with volume — look for OBV uptick and MACD histogram expanding green before adding.`;
+  else blText=`Mixed signals with slight bearish lean (${bullCount}B/${bearCount}S). Hold current position; avoid adding until MA50 is reclaimed and MACD crosses back above signal line.`;
 
   document.getElementById('takeaways').innerHTML=`
     <div class="takeaway-title">📋 Technical Takeaways</div>
@@ -818,9 +933,7 @@ async function openDetail(ticker){
       <div class="bottom-line-text">${blText}</div>
     </div>`;
 
-  const panel=document.getElementById('detail-panel');
-  panel.classList.add('open');
-  panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+  document.getElementById('detail-panel').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
 function closeDetail(){
