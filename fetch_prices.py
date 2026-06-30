@@ -1,35 +1,131 @@
+"""
+Yahoo Finance price + options fetcher for portfolio dashboard.
+Fetches YTD history, current price, and options flow data.
+
+Usage:  python fetch_prices.py portfolio_template.csv prices.json
+Install: pip install yfinance
+"""
+
 import yfinance as yf
 import json
 import csv
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
+
+
+def fetch_options(t, ticker, current_price):
+    """Fetch options flow data for the nearest expiry."""
+    try:
+        expirations = t.options
+        if not expirations:
+            return None
+
+        # Use nearest expiry that is at least 7 days out
+        today = datetime.now().date()
+        target_expiry = None
+        for exp in expirations:
+            exp_date = datetime.strptime(exp, "%Y-%m-%d").date()
+            if (exp_date - today).days >= 7:
+                target_expiry = exp
+                break
+
+        if not target_expiry:
+            target_expiry = expirations[0]
+
+        chain = t.option_chain(target_expiry)
+        calls = chain.calls
+        puts  = chain.puts
+
+        # Total volume
+        call_vol = int(calls["volume"].fillna(0).sum())
+        put_vol  = int(puts["volume"].fillna(0).sum())
+        total_vol = call_vol + put_vol
+
+        # Put/Call ratio
+        pcr = round(put_vol / call_vol, 3) if call_vol > 0 else None
+
+        # Implied volatility — weight by open interest near ATM
+        atm_calls = calls[
+            (calls["strike"] >= current_price * 0.95) &
+            (calls["strike"] <= current_price * 1.05)
+        ]
+        atm_puts = puts[
+            (puts["strike"] >= current_price * 0.95) &
+            (puts["strike"] <= current_price * 1.05)
+        ]
+        iv_calls = round(float(atm_calls["impliedVolatility"].mean()) * 100, 1) \
+            if not atm_calls.empty else None
+        iv_puts  = round(float(atm_puts["impliedVolatility"].mean()) * 100, 1) \
+            if not atm_puts.empty else None
+        iv_avg   = round((iv_calls + iv_puts) / 2, 1) \
+            if iv_calls and iv_puts else (iv_calls or iv_puts)
+
+        # Largest single strikes by volume (top 3 calls and puts)
+        top_calls = calls.nlargest(3, "volume")[["strike", "volume", "impliedVolatility"]]\
+            .rename(columns={"impliedVolatility": "iv"})\
+            .assign(volume=lambda df: df["volume"].fillna(0).astype(int),
+                    iv=lambda df: (df["iv"] * 100).round(1))\
+            .to_dict("records") if not calls.empty else []
+        top_puts  = puts.nlargest(3, "volume")[["strike", "volume", "impliedVolatility"]]\
+            .rename(columns={"impliedVolatility": "iv"})\
+            .assign(volume=lambda df: df["volume"].fillna(0).astype(int),
+                    iv=lambda df: (df["iv"] * 100).round(1))\
+            .to_dict("records") if not puts.empty else []
+
+        # Open interest
+        call_oi = int(calls["openInterest"].fillna(0).sum())
+        put_oi  = int(puts["openInterest"].fillna(0).sum())
+
+        print(f"    Options: call_vol={call_vol:,} put_vol={put_vol:,} PCR={pcr} IV={iv_avg}%")
+
+        return {
+            "expiry":    target_expiry,
+            "call_vol":  call_vol,
+            "put_vol":   put_vol,
+            "total_vol": total_vol,
+            "pcr":       pcr,
+            "call_oi":   call_oi,
+            "put_oi":    put_oi,
+            "iv":        iv_avg,
+            "iv_calls":  iv_calls,
+            "iv_puts":   iv_puts,
+            "top_calls": top_calls,
+            "top_puts":  top_puts,
+        }
+
+    except Exception as e:
+        print(f"    Options error: {e}")
+        return None
 
 
 def fetch_prices(tickers):
     result = {}
-    print(f"Fetching YTD data for: {', '.join(tickers)}")
+    print(f"\nFetching YTD price + options data for: {', '.join(tickers)}\n")
     year_start = f"{datetime.now().year}-01-01"
 
     for ticker in tickers:
+        print(f"  [{ticker}]")
         try:
             t = yf.Ticker(ticker)
             hist = t.history(start=year_start)
 
             if hist.empty:
-                print(f"  {ticker}: no data returned")
+                print(f"    No price data returned")
                 continue
 
-            closes = hist["Close"].tolist()
+            closes  = hist["Close"].tolist()
             volumes = hist["Volume"].tolist()
-            dates = [d.strftime("%Y-%m-%d") for d in hist.index]
+            dates   = [d.strftime("%Y-%m-%d") for d in hist.index]
 
+            # Current price — fall back to last close if intraday is NaN
             try:
                 current_price = float(t.fast_info["last_price"])
                 if current_price != current_price:
                     raise ValueError("NaN")
             except Exception:
-                current_price = closes[-1] if closes else 0
+                current_price = closes[-1]
 
+            # Clean NaN closes
             clean_closes = []
             for i, p in enumerate(closes):
                 if p != p:
@@ -37,18 +133,23 @@ def fetch_prices(tickers):
                 else:
                     clean_closes.append(round(float(p), 2))
 
+            print(f"    Price: ${current_price:.2f} | {len(clean_closes)} trading days YTD")
+
+            # Options flow
+            options = fetch_options(t, ticker, current_price)
+
             result[ticker] = {
-                "price": round(current_price, 2),
-                "history": [
+                "price":      round(current_price, 2),
+                "history":    [
                     {"date": d, "price": p, "vol": int(v)}
                     for d, p, v in zip(dates, clean_closes, volumes)
                 ],
-                "fetched_at": datetime.now().isoformat()
+                "options":    options,
+                "fetched_at": datetime.now().isoformat(),
             }
-            print(f"  {ticker}: ${current_price:.2f}")
 
         except Exception as e:
-            print(f"  {ticker}: error — {e}")
+            print(f"    Error: {e}")
 
     return result
 
@@ -58,10 +159,10 @@ def load_positions(path):
     with open(path, newline="") as f:
         for row in csv.DictReader(f):
             positions.append({
-                "ticker": row["ticker"].upper().strip(),
+                "ticker":   row["ticker"].upper().strip(),
                 "platform": row.get("platform", "Unknown"),
-                "shares": float(row["shares"]),
-                "cost": float(row["Avg Cost"]),
+                "shares":   float(row["shares"]),
+                "cost":     float(row["Avg Cost"]),
             })
     return positions
 
@@ -77,16 +178,17 @@ if __name__ == "__main__":
         print(f"File not found: {csv_path}")
         sys.exit(1)
 
+    print(f"Found {len(positions)} positions.")
     tickers = list({p["ticker"] for p in positions})
-    prices = fetch_prices(tickers)
+    prices  = fetch_prices(tickers)
 
     output = {
-        "positions": positions,
-        "prices": prices,
-        "generated_at": datetime.now().isoformat()
+        "positions":    positions,
+        "prices":       prices,
+        "generated_at": datetime.now().isoformat(),
     }
 
     with open(out_path, "w") as f:
         json.dump(output, f, indent=2)
 
-    print(f"\nDone! Saved to {out_path}")
+    print(f"\n✓ Saved to {out_path}")
