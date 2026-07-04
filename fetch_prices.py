@@ -114,6 +114,8 @@ def fetch_prices(tickers):
                 continue
 
             closes  = hist["Close"].tolist()
+            highs   = hist["High"].tolist()
+            lows    = hist["Low"].tolist()
             volumes = hist["Volume"].tolist()
             dates   = [d.strftime("%Y-%m-%d") for d in hist.index]
 
@@ -125,13 +127,19 @@ def fetch_prices(tickers):
             except Exception:
                 current_price = closes[-1]
 
-            # Clean NaN closes
-            clean_closes = []
-            for i, p in enumerate(closes):
-                if p != p:
-                    clean_closes.append(clean_closes[-1] if clean_closes else 0)
-                else:
-                    clean_closes.append(round(float(p), 2))
+            # Clean NaN closes/highs/lows (carry forward last valid value)
+            clean_closes, clean_highs, clean_lows = [], [], []
+            for i in range(len(closes)):
+                c, h, l = closes[i], highs[i], lows[i]
+                if c != c:
+                    c = clean_closes[-1] if clean_closes else 0
+                if h != h:
+                    h = clean_highs[-1] if clean_highs else c
+                if l != l:
+                    l = clean_lows[-1] if clean_lows else c
+                clean_closes.append(round(float(c), 2))
+                clean_highs.append(round(float(h), 2))
+                clean_lows.append(round(float(l), 2))
 
             print(f"    Price: ${current_price:.2f} | {len(clean_closes)} trading days YTD")
 
@@ -141,8 +149,8 @@ def fetch_prices(tickers):
             result[ticker] = {
                 "price":      round(current_price, 2),
                 "history":    [
-                    {"date": d, "price": p, "vol": int(v)}
-                    for d, p, v in zip(dates, clean_closes, volumes)
+                    {"date": d, "price": p, "high": h, "low": l, "vol": int(v)}
+                    for d, p, h, l, v in zip(dates, clean_closes, clean_highs, clean_lows, volumes)
                 ],
                 "options":    options,
                 "fetched_at": datetime.now().isoformat(),
