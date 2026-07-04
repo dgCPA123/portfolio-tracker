@@ -109,8 +109,18 @@ tr:hover td{background:var(--surface2);cursor:pointer}
 .chart-legend{display:flex;gap:12px;flex-wrap:wrap}
 .chart-legend-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--muted)}
 .chart-legend-line{width:16px;height:2px;border-radius:1px}
+.expand-btn{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:5px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;flex-shrink:0}
+.expand-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
+.chart-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center;padding:30px}
+.chart-modal-overlay.open{display:flex}
+.chart-modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px 22px;width:100%;max-width:1100px;max-height:90vh;display:flex;flex-direction:column}
+.chart-modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.chart-modal-title{font-size:15px;font-weight:600}
+.chart-modal-close{font-size:12px;padding:5px 13px;border:1px solid var(--border2);border-radius:6px;background:transparent;color:var(--muted);cursor:pointer;font-family:var(--font)}
+.chart-modal-close:hover{border-color:var(--red);color:var(--red)}
+.chart-modal-body{flex:1;position:relative;min-height:400px}
 /* Indicators grid */
-.ind-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.ind-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
 .ind-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;align-items:flex-start;gap:9px}
 .ind-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:3px}
 .ind-name{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
@@ -126,6 +136,7 @@ tr:hover td{background:var(--surface2);cursor:pointer}
 .takeaway-text{font-size:12px;line-height:1.5}
 .takeaway-label{font-weight:600}
 .bottom-line-box{background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:11px 14px;margin-top:10px}
+.dip-verdict-box{background:var(--surface2);border:1.5px solid var(--border2);border-radius:8px;padding:11px 14px;margin-top:10px}
 .bottom-line-title{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
 .bottom-line-text{font-size:12px;line-height:1.6;color:var(--text)}
 /* News detail */
@@ -291,14 +302,19 @@ tr:hover td{background:var(--surface2);cursor:pointer}
           <div class="chart-block">
             <div class="chart-block-title">
               Price + Moving Averages
-              <div class="chart-legend">
-                <span class="chart-legend-item"><span class="chart-legend-line" style="background:#6366f1"></span>Price</span>
-                <span class="chart-legend-item"><span class="chart-legend-line" style="background:#22c55e;border-top:2px dashed #22c55e;height:0"></span>MA20</span>
-                <span class="chart-legend-item"><span class="chart-legend-line" style="background:#f59e0b"></span>MA50</span>
-                <span class="chart-legend-item"><span class="chart-legend-line" style="background:#ef4444"></span>MA200</span>
+              <div style="display:flex;align-items:center;gap:10px">
+                <div class="chart-legend">
+                  <span class="chart-legend-item"><span class="chart-legend-line" style="background:#6366f1"></span>Price</span>
+                  <span class="chart-legend-item"><span class="chart-legend-line" style="background:#22c55e;border-top:2px dashed #22c55e;height:0"></span>MA20</span>
+                  <span class="chart-legend-item"><span class="chart-legend-line" style="background:#f59e0b"></span>MA50</span>
+                  <span class="chart-legend-item"><span class="chart-legend-line" style="background:#ef4444"></span>MA200</span>
+                </div>
+                <button class="expand-btn" onclick="expandPriceChart()" title="Expand chart">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                </button>
               </div>
             </div>
-            <div style="position:relative"><canvas id="c-price" height="170"></canvas></div>
+            <div style="position:relative"><canvas id="c-price" height="260"></canvas></div>
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
@@ -309,7 +325,7 @@ tr:hover td{background:var(--surface2);cursor:pointer}
                   <span class="chart-legend-item"><span style="width:10px;height:10px;background:rgba(239,68,68,.6);border-radius:2px;display:inline-block"></span>Sell vol</span>
                 </div>
               </div>
-              <div style="position:relative"><canvas id="c-vol" height="110"></canvas></div>
+              <div style="position:relative"><canvas id="c-vol" height="180"></canvas></div>
             </div>
             <div class="chart-block" style="margin-bottom:0">
               <div class="chart-block-title">OBV — On-Balance Volume
@@ -318,22 +334,42 @@ tr:hover td{background:var(--surface2);cursor:pointer}
                   <span class="chart-legend-item"><span class="chart-legend-line" style="background:#f59e0b"></span>OBV MA20</span>
                 </div>
               </div>
-              <div style="position:relative"><canvas id="c-obv" height="110"></canvas></div>
+              <div style="position:relative"><canvas id="c-obv" height="180"></canvas></div>
             </div>
           </div>
 
-          <div class="chart-block">
-            <div class="chart-block-title">RSI (14)
-              <span id="rsi-val-label" style="font-family:var(--mono);font-size:12px;font-weight:700"></span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div class="chart-block" style="margin-bottom:0">
+              <div class="chart-block-title">RSI (14)
+                <span id="rsi-val-label" style="font-family:var(--mono);font-size:12px;font-weight:700"></span>
+              </div>
+              <div style="position:relative"><canvas id="c-rsi" height="160"></canvas></div>
             </div>
-            <div style="position:relative"><canvas id="c-rsi" height="90"></canvas></div>
+            <div class="chart-block" style="margin-bottom:0">
+              <div class="chart-block-title">MACD (12,26,9)
+                <span id="macd-val-label" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></span>
+              </div>
+              <div style="position:relative"><canvas id="c-macd" height="160"></canvas></div>
+            </div>
           </div>
 
-          <div class="chart-block">
-            <div class="chart-block-title">MACD (12,26,9)
-              <span id="macd-val-label" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></span>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+            <div class="chart-block" style="margin-bottom:0">
+              <div class="chart-block-title">ADX (14) — Trend Strength
+                <div class="chart-legend">
+                  <span class="chart-legend-item"><span class="chart-legend-line" style="background:#8b5cf6"></span>ADX</span>
+                  <span class="chart-legend-item"><span class="chart-legend-line" style="background:#22c55e"></span>+DI</span>
+                  <span class="chart-legend-item"><span class="chart-legend-line" style="background:#ef4444"></span>−DI</span>
+                </div>
+              </div>
+              <div style="position:relative"><canvas id="c-adx" height="180"></canvas></div>
             </div>
-            <div style="position:relative"><canvas id="c-macd" height="100"></canvas></div>
+            <div class="chart-block" style="margin-bottom:0">
+              <div class="chart-block-title">Stochastic %K/%D
+                <span id="stoch-val-label" style="font-family:var(--mono);font-size:11px;color:var(--muted)"></span>
+              </div>
+              <div style="position:relative"><canvas id="c-stoch" height="180"></canvas></div>
+            </div>
           </div>
 
           <!-- Technical Takeaways -->
@@ -366,6 +402,19 @@ tr:hover td{background:var(--surface2);cursor:pointer}
   </div>
 </div>
 
+<!-- FULLSCREEN CHART MODAL -->
+<div class="chart-modal-overlay" id="chart-modal-overlay" onclick="if(event.target===this)closePriceChartModal()">
+  <div class="chart-modal">
+    <div class="chart-modal-header">
+      <span class="chart-modal-title" id="chart-modal-title">Price + Moving Averages</span>
+      <button class="chart-modal-close" onclick="closePriceChartModal()">✕ Close</button>
+    </div>
+    <div class="chart-modal-body">
+      <canvas id="c-price-modal"></canvas>
+    </div>
+  </div>
+</div>
+
 <script>
 // ═══════════════════════════════════════════════
 // CONFIG
@@ -386,7 +435,7 @@ function showCfgErr(msg){const e=document.getElementById('cfg-error');e.textCont
 // ═══════════════════════════════════════════════
 // DATA
 // ═══════════════════════════════════════════════
-let POS=[],PRICES={},CLOSES={},VOLS={},DATES={},OPTIONS={},PREV_CLOSES={},ROWS=[];
+let POS=[],PRICES={},CLOSES={},HIGHS={},LOWS={},VOLS={},DATES={},OPTIONS={},PREV_CLOSES={},ROWS=[];
 
 async function fetchAndInit(){
   const cfg=loadConfig();
@@ -412,17 +461,24 @@ async function fetchAndInit(){
 
 function ingestData(data){
   POS=(data.positions||[]).map(p=>({t:p.ticker,pl:p.platform,sh:parseFloat(p.shares),cost:parseFloat(p.cost)}));
-  CLOSES={};VOLS={};PRICES={};PREV_CLOSES={};DATES={};OPTIONS={};
+  CLOSES={};HIGHS={};LOWS={};VOLS={};PRICES={};PREV_CLOSES={};DATES={};OPTIONS={};
   Object.entries(data.prices||{}).forEach(([ticker,info])=>{
     const hist=info.history||[];
-    const closes=hist.map(h=>h.price).filter(p=>!isNaN(p)&&p>0);
-    const vols=hist.map(h=>h.vol||0);
-    const dates=hist.filter(h=>!isNaN(h.price)&&h.price>0).map(h=>h.date||'');
+    // Filter together so arrays stay in sync
+    const valid=hist.filter(h=>!isNaN(h.price)&&h.price>0);
+    const closes=valid.map(h=>Math.round(h.price*100)/100);
+    // Fall back to close if high/low weren't fetched (older prices.json)
+    const highs=valid.map(h=>(h.high!=null&&!isNaN(h.high))?Math.round(h.high*100)/100:Math.round(h.price*100)/100);
+    const lows=valid.map(h=>(h.low!=null&&!isNaN(h.low))?Math.round(h.low*100)/100:Math.round(h.price*100)/100);
+    const vols=valid.map(h=>h.vol||0);
+    const dates=valid.map(h=>h.date||'');
     const lastClose=closes.length?closes[closes.length-1]:0;
     const prevClose=closes.length>1?closes[closes.length-2]:lastClose;
     PRICES[ticker]=(info.price&&!isNaN(info.price)&&info.price>0)?info.price:lastClose;
     CLOSES[ticker]=closes;
-    VOLS[ticker]=vols.slice(0,closes.length);
+    HIGHS[ticker]=highs;
+    LOWS[ticker]=lows;
+    VOLS[ticker]=vols;
     DATES[ticker]=dates;
     PREV_CLOSES[ticker]=prevClose;
     OPTIONS[ticker]=info.options||null;
@@ -486,6 +542,89 @@ function obv(closes,vols){
   return out;
 }
 
+// Wilder smoothing (used by ADX/DI)
+function wilderSmooth(arr,n){
+  const out=new Array(arr.length).fill(null);
+  let sum=0;
+  for(let i=0;i<arr.length;i++){
+    if(arr[i]==null) continue;
+    if(i<n-1){sum+=arr[i];continue;}
+    if(i===n-1){sum+=arr[i];out[i]=sum;continue;}
+    out[i]=out[i-1]-(out[i-1]/n)+arr[i];
+  }
+  return out;
+}
+
+// True Range, +DM, -DM, DI+/DI-, DX, ADX (Wilder's method, period 14)
+function calcADX(highs,lows,closes,n=14){
+  const len=closes.length;
+  const tr=new Array(len).fill(null);
+  const plusDM=new Array(len).fill(null);
+  const minusDM=new Array(len).fill(null);
+  for(let i=1;i<len;i++){
+    const upMove=highs[i]-highs[i-1];
+    const downMove=lows[i-1]-lows[i];
+    plusDM[i]=(upMove>downMove&&upMove>0)?upMove:0;
+    minusDM[i]=(downMove>upMove&&downMove>0)?downMove:0;
+    const hl=highs[i]-lows[i];
+    const hc=Math.abs(highs[i]-closes[i-1]);
+    const lc=Math.abs(lows[i]-closes[i-1]);
+    tr[i]=Math.max(hl,hc,lc);
+  }
+  const smoothTR=wilderSmooth(tr,n);
+  const smoothPlusDM=wilderSmooth(plusDM,n);
+  const smoothMinusDM=wilderSmooth(minusDM,n);
+  const plusDI=new Array(len).fill(null);
+  const minusDI=new Array(len).fill(null);
+  const dx=new Array(len).fill(null);
+  for(let i=0;i<len;i++){
+    if(smoothTR[i]==null||smoothTR[i]===0) continue;
+    plusDI[i]=(smoothPlusDM[i]/smoothTR[i])*100;
+    minusDI[i]=(smoothMinusDM[i]/smoothTR[i])*100;
+    const diSum=plusDI[i]+minusDI[i];
+    dx[i]=diSum===0?0:(Math.abs(plusDI[i]-minusDI[i])/diSum)*100;
+  }
+  // ADX = Wilder-smoothed average of DX
+  const adx=new Array(len).fill(null);
+  const validDx=dx.filter(v=>v!=null);
+  let dxSum=0,count=0,started=false;
+  for(let i=0;i<len;i++){
+    if(dx[i]==null) continue;
+    count++;
+    if(count<=n){dxSum+=dx[i];if(count===n){adx[i]=dxSum/n;started=true;}continue;}
+    adx[i]=((adx[i-1]??(dxSum/n))*(n-1)+dx[i])/n;
+  }
+  return{plusDI,minusDI,adx};
+}
+
+// Stochastic Oscillator %K and %D
+function calcStochastic(highs,lows,closes,kPeriod=14,dPeriod=3,smooth=3){
+  const len=closes.length;
+  const rawK=new Array(len).fill(null);
+  for(let i=kPeriod-1;i<len;i++){
+    const hh=Math.max(...highs.slice(i-kPeriod+1,i+1));
+    const ll=Math.min(...lows.slice(i-kPeriod+1,i+1));
+    rawK[i]=(hh-ll)===0?50:((closes[i]-ll)/(hh-ll))*100;
+  }
+  // Smooth rawK to get %K
+  const kSmooth=new Array(len).fill(null);
+  for(let i=0;i<len;i++){
+    if(i<kPeriod-1+smooth-1){continue;}
+    const slice=rawK.slice(i-smooth+1,i+1);
+    if(slice.some(v=>v==null))continue;
+    kSmooth[i]=slice.reduce((a,b)=>a+b,0)/smooth;
+  }
+  const dSmooth=new Array(len).fill(null);
+  for(let i=0;i<len;i++){
+    if(i<kPeriod-1+smooth-1+dPeriod-1)continue;
+    const slice=kSmooth.slice(i-dPeriod+1,i+1);
+    if(slice.some(v=>v==null))continue;
+    dSmooth[i]=slice.reduce((a,b)=>a+b,0)/dPeriod;
+  }
+  return{k:kSmooth,d:dSmooth};
+}
+
+
 // ═══════════════════════════════════════════════
 // CHART DEFAULTS
 // ═══════════════════════════════════════════════
@@ -493,13 +632,14 @@ const PALETTE=['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#a855f7','#14b
 const CD={responsive:true,maintainAspectRatio:false,animation:false,
   plugins:{legend:{display:false},tooltip:{enabled:true,mode:'index',intersect:false,backgroundColor:'#13161e',titleColor:'#e8eaf2',bodyColor:'#6b7194',borderColor:'#2a2f3f',borderWidth:1}},
   elements:{point:{radius:0}}};
-function scaleOpts(cb=null){return{grid:{color:'#1e2230',drawBorder:false},ticks:{color:'#4a5070',font:{size:10,family:"'SF Mono','Fira Code',monospace"},maxTicksLimit:6,callback:cb||(v=>v)}};}
+function scaleOpts(cb=null){return{grid:{color:'#1e2230',drawBorder:false},ticks:{color:'#4a5070',font:{size:10,family:"'SF Mono','Fira Code',monospace"},maxTicksLimit:8,maxRotation:45,autoSkip:true,callback:cb||(v=>v)}};}
 
 // ═══════════════════════════════════════════════
 // COMPUTE ROW
 // ═══════════════════════════════════════════════
 function computeRow(p,idx){
   const closes=CLOSES[p.t]||[],vols=VOLS[p.t]||[];
+  const highs=HIGHS[p.t]||closes,lows=LOWS[p.t]||closes;
   const pr=PRICES[p.t]||p.cost;
   const prevClose=PREV_CLOSES[p.t]||pr;
   const val=pr*p.sh,pnl=(pr-p.cost)*p.sh,pct=(pr-p.cost)/p.cost*100;
@@ -510,8 +650,38 @@ function computeRow(p,idx){
   const rsiArr=rsi(closes);
   const{line:macdLine,signal:macdSig,hist:macdHist}=calcMACD(closes);
   const obvArr=obv(closes,vols),volMa20=ma(vols,20),obvMa20=ma(obvArr,20);
+  const{plusDI,minusDI,adx}=calcADX(highs,lows,closes,14);
+  const{k:stochK,d:stochD}=calcStochastic(highs,lows,closes,14,3,3);
   const lastRsi=rsiArr[n-1]||50,lastMacd=macdLine[n-1]||0,lastSig=macdSig[n-1]||0;
   const lastM20=m20[n-1],lastM50=m50[n-1],lastM200=m200[n-1];
+  const prevM20=n>1?m20[n-2]:null,prevM50=n>1?m50[n-2]:null,prevM200=n>1?m200[n-2]:null;
+  const lastADX=adx[n-1],lastPlusDI=plusDI[n-1],lastMinusDI=minusDI[n-1];
+  const lastStochK=stochK[n-1],lastStochD=stochD[n-1],prevStochK=n>1?stochK[n-2]:null,prevStochD=n>1?stochD[n-2]:null;
+
+  // Stochastic bullish/bearish crossover in last session
+  let stochCross=null;
+  if(prevStochK!=null&&prevStochD!=null&&lastStochK!=null&&lastStochD!=null){
+    if(prevStochK<=prevStochD&&lastStochK>lastStochD) stochCross='bullish';
+    else if(prevStochK>=prevStochD&&lastStochK<lastStochD) stochCross='bearish';
+  }
+
+  // MA crossover detection (recent 5 days)
+  let crossovers=[];
+  for(let i=Math.max(1,n-5);i<n;i++){
+    if(m20[i]!=null&&m50[i]!=null&&m20[i-1]!=null&&m50[i-1]!=null){
+      if(m20[i-1]<=m50[i-1]&&m20[i]>m50[i]) crossovers.push({type:'MA20×MA50',dir:'bullish',day:i});
+      if(m20[i-1]>=m50[i-1]&&m20[i]<m50[i]) crossovers.push({type:'MA20×MA50',dir:'bearish',day:i});
+    }
+    if(m50[i]!=null&&m200[i]!=null&&m50[i-1]!=null&&m200[i-1]!=null){
+      if(m50[i-1]<=m200[i-1]&&m50[i]>m200[i]) crossovers.push({type:'Golden Cross',dir:'bullish',day:i});
+      if(m50[i-1]>=m200[i-1]&&m50[i]<m200[i]) crossovers.push({type:'Death Cross',dir:'bearish',day:i});
+    }
+    if(m20[i]!=null&&m200[i]!=null&&m20[i-1]!=null&&m200[i-1]!=null){
+      if(m20[i-1]<=m200[i-1]&&m20[i]>m200[i]) crossovers.push({type:'MA20×MA200',dir:'bullish',day:i});
+      if(m20[i-1]>=m200[i-1]&&m20[i]<m200[i]) crossovers.push({type:'MA20×MA200',dir:'bearish',day:i});
+    }
+  }
+
   let trend=0;
   if(lastM20&&pr>lastM20)trend++;
   if(lastM50&&pr>lastM50)trend++;
@@ -538,6 +708,10 @@ function computeRow(p,idx){
   else blParts.push('MACD bearish');
   if(obvTrend)blParts.push('OBV accumulating');
   else blParts.push('OBV distributing');
+  if(lastADX!=null){
+    if(lastADX>=25) blParts.push(`ADX ${lastADX.toFixed(0)} (trending)`);
+    else blParts.push(`ADX ${lastADX.toFixed(0)} (choppy)`);
+  }
 
   // Options data
   const opts = OPTIONS[p.t] || null;
@@ -559,6 +733,9 @@ function computeRow(p,idx){
   const bottomLine = blParts.join(' · ');
 
   return{...p,pr,val,pnl,pct,dayPct,dayPnl,sig,trend,lastRsi,lastMacd,lastSig,lastM20,lastM50,lastM200,
+    prevM20,prevM50,prevM200,crossovers,
+    highs,lows,adx,plusDI,minusDI,lastADX,lastPlusDI,lastMinusDI,
+    stochK,stochD,lastStochK,lastStochD,stochCross,
     closes,vols,m20,m50,m200,rsiArr,macdLine,macdSig,macdHist,obvArr,volMa20,obvMa20,
     lastObv,lastObvMa,obvTrend,bull,bear,bottomLine,opts,optsSig,optsColor,optsSurge,idx};
 }
@@ -721,26 +898,29 @@ function sortH(col,th){
 // ═══════════════════════════════════════════════
 const dCharts={};
 let cachedNews=[];
+let currentDetail={r:null,labels:null,col:null};
+let modalChart=null;
 
 async function openDetail(ticker){
   const r=ROWS.find(x=>x.t===ticker);if(!r)return;
   const col=PALETTE[r.idx%PALETTE.length],n=r.closes.length;
-  // Build date labels — show month start + first day of each week, blank otherwise
-  const rawDates=DATES[r.t]||r.closes.map((_,i)=>'');
-  const labels=rawDates.map((d,i)=>{
-    if(!d) return i%20===0?`D${i+1}`:'';
-    const dt=new Date(d+'T00:00:00');
-    const prev=i>0?new Date(rawDates[i-1]+'T00:00:00'):null;
-    // Show label if: first data point, month changed, or Monday (day=1)
-    const monthChanged=!prev||dt.getMonth()!==prev.getMonth();
-    const isMonday=dt.getDay()===1;
-    if(i===0||monthChanged) return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
-    if(isMonday&&i%4===0) return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'});
-    return '';
-  });
+  // Build date labels from stored dates
+  const rawDates=DATES[r.t]||[];
+  let labels;
+  if(rawDates.length>0){
+    labels=rawDates.map(d=>{
+      if(!d) return '';
+      const parts=d.split('-');
+      const months=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      return months[parseInt(parts[1])]+' '+parseInt(parts[2]);
+    });
+  } else {
+    labels=r.closes.map((_,i)=>'Day '+(i+1));
+  }
+  currentDetail={r,labels,col};
 
   // Always destroy all charts first before updating anything
-  ['c-price','c-rsi','c-macd','c-vol','c-obv'].forEach(id=>{if(dCharts[id]){dCharts[id].destroy();delete dCharts[id];}});
+  ['c-price','c-rsi','c-macd','c-vol','c-obv','c-adx','c-stoch'].forEach(id=>{if(dCharts[id]){dCharts[id].destroy();delete dCharts[id];}});
 
   // Make sure panel is open so canvas elements are in DOM
   document.getElementById('detail-panel').classList.add('open');
@@ -837,9 +1017,15 @@ async function openDetail(ticker){
   document.getElementById('stock-news').innerHTML=renderStockNewsInner(cachedNews,ticker);
 
   // Indicator cards
+  const adxTrendLabel = r.lastADX==null ? 'No data' : r.lastADX>=25 ? `Strong trend (DI+${r.lastPlusDI>r.lastMinusDI?' leading':''})` : 'Weak/choppy — range-bound';
+  const adxColor = r.lastADX==null ? 'var(--muted)' : r.lastADX>=25 ? (r.lastPlusDI>r.lastMinusDI?'var(--green)':'var(--red)') : 'var(--amber)';
+  const stochLabel = r.lastStochK==null ? 'No data' : r.lastStochK<20 ? 'Oversold zone' : r.lastStochK>80 ? 'Overbought zone' : 'Mid-range';
+  const stochColor = r.lastStochK==null ? 'var(--muted)' : r.lastStochK<20 ? 'var(--green)' : r.lastStochK>80 ? 'var(--red)' : 'var(--amber)';
   const inds=[
     {n:'RSI 14',v:r.lastRsi.toFixed(1),s:r.lastRsi<30?'Oversold — potential buy':r.lastRsi>70?'Overbought — caution':'Neutral zone',c:r.lastRsi<30?'var(--green)':r.lastRsi>70?'var(--red)':'var(--amber)',bar:r.lastRsi/100},
     {n:'MACD',v:r.lastMacd.toFixed(3),s:r.lastMacd>r.lastSig?'Bullish crossover':'Bearish crossover',c:r.lastMacd>r.lastSig?'var(--green)':'var(--red)'},
+    {n:'ADX (14)',v:r.lastADX!=null?r.lastADX.toFixed(1):'—',s:adxTrendLabel,c:adxColor,bar:r.lastADX!=null?Math.min(r.lastADX/50,1):null},
+    {n:'Stoch %K/%D',v:r.lastStochK!=null?`${r.lastStochK.toFixed(0)} / ${r.lastStochD?.toFixed(0)??'—'}`:'—',s:r.stochCross?`${r.stochCross==='bullish'?'🟢 Bullish':'🔴 Bearish'} crossover — ${stochLabel}`:stochLabel,c:stochColor,bar:r.lastStochK!=null?r.lastStochK/100:null},
     {n:'MA20',v:r.lastM20?`$${r.lastM20.toFixed(2)}`:'—',s:r.lastM20&&r.pr>r.lastM20?'Price above MA20':'Price below MA20',c:r.lastM20&&r.pr>r.lastM20?'var(--green)':'var(--red)'},
     {n:'MA50',v:r.lastM50?`$${r.lastM50.toFixed(2)}`:'—',s:r.lastM50&&r.pr>r.lastM50?'Price above MA50':'Price below MA50',c:r.lastM50&&r.pr>r.lastM50?'var(--green)':'var(--red)'},
     {n:'MA200',v:r.lastM200?`$${r.lastM200.toFixed(2)}`:'—',s:r.lastM200&&r.pr>r.lastM200?'Long-term bullish':'Long-term bearish',c:r.lastM200&&r.pr>r.lastM200?'var(--green)':'var(--red)'},
@@ -892,12 +1078,46 @@ async function openDetail(ticker){
     {type:'line',data:r.macdSig,borderColor:'#f59e0b',borderWidth:1.5,fill:false,tension:0.3,pointRadius:0,borderDash:[4,3],label:'Signal'},
   ]},options:{...CD,scales:{x:scaleOpts(),y:scaleOpts()}}});
 
+  // ADX / DI
+  document.getElementById('stoch-val-label').textContent=r.lastStochK!=null?`%K ${r.lastStochK.toFixed(1)} · %D ${r.lastStochD?.toFixed(1)??'—'}`:'';
+  dCharts['c-adx']=new Chart(document.getElementById('c-adx'),{type:'line',data:{labels,datasets:[
+    {data:r.adx,borderColor:'#8b5cf6',borderWidth:2,fill:false,tension:0.3,label:'ADX'},
+    {data:r.plusDI,borderColor:'#22c55e',borderWidth:1.3,fill:false,tension:0.3,borderDash:[3,3],label:'+DI'},
+    {data:r.minusDI,borderColor:'#ef4444',borderWidth:1.3,fill:false,tension:0.3,borderDash:[3,3],label:'−DI'},
+  ]},options:{...CD,scales:{x:scaleOpts(),y:{...scaleOpts(),min:0,suggestedMax:60}}}});
+
+  // Stochastic %K/%D
+  dCharts['c-stoch']=new Chart(document.getElementById('c-stoch'),{type:'line',data:{labels,datasets:[
+    {data:r.stochK,borderColor:'#3b82f6',borderWidth:1.8,fill:false,tension:0.3,label:'%K'},
+    {data:r.stochD,borderColor:'#f59e0b',borderWidth:1.5,fill:false,tension:0.3,borderDash:[4,3],label:'%D'},
+  ]},options:{...CD,scales:{x:scaleOpts(),y:{...scaleOpts(),min:0,max:100}}}});
+
   // Takeaways
   const trendLabels=['Below all MAs — strong downtrend','Below MA50 & MA200 — weak trend','Above MA20 only — caution','Above MA20 & MA50 — building momentum','Full bull alignment — all MAs below price'];
+  const ma20Str=r.lastM20?`$${r.lastM20.toFixed(2)}`:'—';
+  const ma50Str=r.lastM50?`$${r.lastM50.toFixed(2)}`:'—';
+  const ma200Str=r.lastM200?`$${r.lastM200.toFixed(2)}`:'—';
+  const crossText = (r.crossovers&&r.crossovers.length)
+    ? ' Recent crossover: ' + r.crossovers.map(c=>`${c.type} (${c.dir === 'bullish' ? '🟢 bullish' : '🔴 bearish'}, ${r.closes.length-c.day}d ago)`).join(', ') + '.'
+    : ' No crossover in the last 5 sessions.';
   const tw=[
-    {badge:r.trend>=3?'BULLISH':r.trend<=1?'BEARISH':'NEUTRAL',bc:r.trend>=3?'sig-buy':r.trend<=1?'sig-sell':'sig-hold',l:'Moving Averages',t:`${trendLabels[Math.min(r.trend,4)]}. MA20 ${r.lastM20&&r.pr>r.lastM20?'support holding':'broken'}, MA50 ${r.lastM50&&r.pr>r.lastM50?'intact':'lost'}, MA200 ${r.lastM200&&r.pr>r.lastM200?'trend preserved':'broken'}.`},
+    {badge:r.trend>=3?'BULLISH':r.trend<=1?'BEARISH':'NEUTRAL',bc:r.trend>=3?'sig-buy':r.trend<=1?'sig-sell':'sig-hold',l:'Moving Averages',t:`${trendLabels[Math.min(r.trend,4)]}. MA20 ${ma20Str} (price ${r.lastM20&&r.pr>r.lastM20?'above':'below'}), MA50 ${ma50Str} (price ${r.lastM50&&r.pr>r.lastM50?'above':'below'}), MA200 ${ma200Str} (price ${r.lastM200&&r.pr>r.lastM200?'above':'below'}).${crossText}`},
     {badge:r.lastRsi<30?'BULLISH':r.lastRsi>70?'BEARISH':'NEUTRAL',bc:r.lastRsi<30?'sig-buy':r.lastRsi>70?'sig-sell':'sig-hold',l:'RSI',t:r.lastRsi<30?`RSI at ${r.lastRsi.toFixed(1)} — deeply oversold. Historical mean-reversion zone. Watch for uptick above 35 as confirmation.`:r.lastRsi>70?`RSI at ${r.lastRsi.toFixed(1)} — overbought. Momentum stretched. Risk of near-term pullback; consider tightening stops.`:`RSI at ${r.lastRsi.toFixed(1)} — neutral. No extreme reading. Watch for break above 60 (bullish momentum) or below 40 (bearish).`},
     {badge:r.lastMacd>r.lastSig?'BULLISH':'BEARISH',bc:r.lastMacd>r.lastSig?'sig-buy':'sig-sell',l:'MACD',t:r.lastMacd>r.lastSig?`MACD line (${r.lastMacd.toFixed(3)}) above signal (${r.lastSig.toFixed(3)}) — positive momentum. Histogram expanding confirms strength.`:`MACD (${r.lastMacd.toFixed(3)}) below signal (${r.lastSig.toFixed(3)}) — negative momentum. Watch histogram for narrowing as a potential reversal signal.`},
+    ...( r.lastADX!=null ? [{
+      badge: r.lastADX<20 ? 'NEUTRAL' : (r.lastPlusDI>r.lastMinusDI ? 'BULLISH' : 'BEARISH'),
+      bc:    r.lastADX<20 ? 'sig-hold' : (r.lastPlusDI>r.lastMinusDI ? 'sig-buy' : 'sig-sell'),
+      l:'ADX / Trend Strength',
+      t: r.lastADX<20
+        ? `ADX at ${r.lastADX.toFixed(1)} — weak or absent trend, price is likely range-bound/choppy. Dip-buying is riskier here since there's no strong trend to "buy into." Wait for ADX to climb above 25 for confirmation.`
+        : `ADX at ${r.lastADX.toFixed(1)} — trend is strong (${r.lastADX>=40?'very strong':'confirmed'}). +DI ${r.lastPlusDI.toFixed(1)} vs −DI ${r.lastMinusDI.toFixed(1)} shows ${r.lastPlusDI>r.lastMinusDI?'buyers':'sellers'} in control. ${r.lastPlusDI>r.lastMinusDI?'A pullback here is more likely a genuine dip in an uptrend, not a trend reversal.':'This is a downtrend, not a dip — buying here fights the prevailing trend.'}`,
+    }] : [] ),
+    ...( r.lastStochK!=null ? [{
+      badge: r.lastStochK<20 ? 'BULLISH' : r.lastStochK>80 ? 'BEARISH' : 'NEUTRAL',
+      bc:    r.lastStochK<20 ? 'sig-buy'  : r.lastStochK>80 ? 'sig-sell'  : 'sig-hold',
+      l:'Stochastic %K/%D',
+      t: `%K ${r.lastStochK.toFixed(1)} / %D ${r.lastStochD?.toFixed(1)??'—'}.${r.stochCross?` ${r.stochCross==='bullish'?'🟢 Bullish %K/%D crossover just triggered':'🔴 Bearish %K/%D crossover just triggered'} — `:' '}${r.lastStochK<20?'Deep in oversold territory; a bullish crossover here is one of the earliest reversal signals available.':r.lastStochK>80?'Overbought — momentum stretched, elevated risk of a short-term pullback.':'Mid-range, no extreme reading yet.'}`,
+    }] : [] ),
     {badge:r.obvTrend?'BULLISH':'BEARISH',bc:r.obvTrend?'sig-buy':'sig-sell',l:'Volume / OBV',t:r.obvTrend?`OBV trending above its MA20 — institutional accumulation detected. Volume on up-days exceeds down-days, confirming buyers are in control.`:`OBV below MA20 — distribution underway. Sell volume dominating, suggesting smart money is reducing exposure. No capitulation spike visible yet.`},
     ...( r.opts ? [{
       badge: r.opts.pcr < 0.7 ? 'BULLISH' : r.opts.pcr > 1.2 ? 'BEARISH' : 'NEUTRAL',
@@ -911,6 +1131,27 @@ async function openDetail(ticker){
     }] : [] ),
     {badge:r.pct>0?'PROFIT':'LOSS',bc:r.pct>0?'sig-buy':'sig-sell',l:'P&L',t:`${r.pct>=0?'Up':'Down'} ${Math.abs(r.pct).toFixed(1)}% since inception ($${r.cost.toFixed(2)} avg). Today ${r.dayPct>=0?'+':''}${r.dayPct.toFixed(2)}% ($${r.dayPnl>=0?'+':''}${r.dayPnl.toFixed(2)}). Current value $${fmt(r.val)} on ${r.sh} shares.`},
   ];
+
+  // "Buy the Dip" verdict — combines trend confirmation (ADX) + oversold readings (RSI/Stoch) + Bollinger-style stretch via MA20
+  let dipVerdict=null, dipColor='var(--amber)', dipBadge='WAIT';
+  if(r.lastADX!=null&&r.lastStochK!=null){
+    const trendOk = r.lastADX>=20 && r.lastPlusDI>r.lastMinusDI; // real uptrend intact
+    const oversold = r.lastRsi<40 || r.lastStochK<25;
+    const reversalSignal = r.stochCross==='bullish' || (r.lastRsi<35);
+    if(trendOk && oversold && reversalSignal){
+      dipVerdict=`Strong dip-buy setup: uptrend confirmed by ADX (${r.lastADX.toFixed(0)}, +DI leading), oversold on RSI (${r.lastRsi.toFixed(0)}) and/or Stochastic (${r.lastStochK.toFixed(0)})${r.stochCross==='bullish'?', with a fresh bullish %K/%D crossover':''}. This is close to the textbook "buy the dip in an uptrend" pattern.`;
+      dipColor='var(--green)';dipBadge='DIP-BUY SETUP';
+    } else if(trendOk && oversold){
+      dipVerdict=`Watch closely: trend is intact (ADX ${r.lastADX.toFixed(0)}, buyers leading) and price is oversold, but no reversal confirmation yet (no Stochastic crossover, RSI not extreme). Wait for %K to cross above %D before committing.`;
+      dipColor='var(--amber)';dipBadge='WATCH';
+    } else if(!trendOk && oversold){
+      dipVerdict=`Caution: price is oversold but ADX (${r.lastADX.toFixed(0)}) shows no confirmed uptrend${r.lastPlusDI<r.lastMinusDI?' — sellers are actually in control (−DI leading)':''}. This may not be a "dip" at all, but the start of a real downtrend. Avoid buying just because it's cheap.`;
+      dipColor='var(--red)';dipBadge='AVOID';
+    } else {
+      dipVerdict=`No dip-buy setup right now. Either the stock isn't oversold (RSI ${r.lastRsi.toFixed(0)}, Stoch ${r.lastStochK.toFixed(0)}) or the trend context doesn't support it. Nothing actionable from a dip-buying standpoint today.`;
+      dipColor='var(--muted)';dipBadge='NO SETUP';
+    }
+  }
 
   // Bottom line
   let blText='';
@@ -928,6 +1169,10 @@ async function openDetail(ticker){
       <span class="takeaway-badge ${t.bc}">${t.badge}</span>
       <span class="takeaway-text"><span class="takeaway-label">${t.l} — </span>${t.t}</span>
     </div>`).join('')}
+    ${dipVerdict?`<div class="dip-verdict-box" style="border-color:${dipColor}">
+      <div class="bottom-line-title">🎯 Buy-the-Dip Check <span style="color:${dipColor};font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-size:10px;margin-left:6px;padding:2px 7px;border-radius:4px;background:${dipColor}22">${dipBadge}</span></div>
+      <div class="bottom-line-text">${dipVerdict}</div>
+    </div>`:''}
     <div class="bottom-line-box">
       <div class="bottom-line-title">⚡ Bottom Line</div>
       <div class="bottom-line-text">${blText}</div>
@@ -939,7 +1184,26 @@ async function openDetail(ticker){
 function closeDetail(){
   document.getElementById('detail-panel').classList.remove('open');
   document.querySelectorAll('.ticker-item').forEach(e=>e.classList.remove('active'));
-  ['c-price','c-rsi','c-macd','c-vol','c-obv'].forEach(id=>{if(dCharts[id]){dCharts[id].destroy();delete dCharts[id];}});
+  ['c-price','c-rsi','c-macd','c-vol','c-obv','c-adx','c-stoch'].forEach(id=>{if(dCharts[id]){dCharts[id].destroy();delete dCharts[id];}});
+}
+
+function expandPriceChart(){
+  const {r,labels,col}=currentDetail;
+  if(!r) return;
+  document.getElementById('chart-modal-title').textContent=`${r.t} — Price + Moving Averages`;
+  document.getElementById('chart-modal-overlay').classList.add('open');
+  if(modalChart){modalChart.destroy();modalChart=null;}
+  modalChart=new Chart(document.getElementById('c-price-modal'),{type:'line',data:{labels,datasets:[
+    {data:r.closes,borderColor:col,borderWidth:2,fill:true,backgroundColor:col+'18',tension:0.3,label:'Price'},
+    {data:r.m20,borderColor:'#22c55e',borderWidth:1.5,borderDash:[4,3],fill:false,tension:0.3,label:'MA20'},
+    {data:r.m50,borderColor:'#f59e0b',borderWidth:1.5,borderDash:[6,4],fill:false,tension:0.3,label:'MA50'},
+    {data:r.m200,borderColor:'#ef4444',borderWidth:1.5,borderDash:[2,4],fill:false,tension:0.3,label:'MA200'},
+  ]},options:{...CD,plugins:{...CD.plugins,legend:{display:true,labels:{color:'#8a90ab',font:{size:11},boxWidth:16,padding:14}}},scales:{x:{...scaleOpts(),ticks:{...scaleOpts().ticks,maxTicksLimit:16}},y:scaleOpts(v=>'$'+v.toFixed(0))}}});
+}
+
+function closePriceChartModal(){
+  document.getElementById('chart-modal-overlay').classList.remove('open');
+  if(modalChart){modalChart.destroy();modalChart=null;}
 }
 
 // ═══════════════════════════════════════════════
@@ -1045,6 +1309,10 @@ window.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('cfg-repo').value=cfg.repo||'portfolio-tracker';
     document.getElementById('spinner-panel').style.display='none';
   }
+});
+
+document.addEventListener('keydown',(e)=>{
+  if(e.key==='Escape') closePriceChartModal();
 });
 </script>
 </body>
