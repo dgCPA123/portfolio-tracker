@@ -20,9 +20,10 @@ TSLA,Robinhood,20,400
 NOW,Robinhood,10,126
 MSFT,Robinhood,1,393
 GOOGL,Robinhood,1,345
-CLLS,Robinhood,10,3.30
-FDMT,Robinhood,10,13.00
-GPCR,Robinhood,10,53.45
-RGNX,Robinhood,10,13.28
-SYRE,Robinhood,10,86.63
-TRAX,Robinhood,10,19.30
+CLLS,Robinhood,1,3.30
+FDMT,Robinhood,1,13.00
+GPCR,Robinhood,1,53.45
+RGNX,Robinhood,1,13.28
+SYRE,Robinhood,1,86.63
+TRAX,Robinhood,1,19.30
+SOXX,eTRADE,1,601.73
