@@ -1,6 +1,8 @@
 """
 Yahoo Finance price + options fetcher for portfolio dashboard.
-Fetches YTD history, current price, and options flow data.
+Fetches 2 years of history (for YTD/1Y/2Y trend comparisons), current price,
+and options flow data. Also fetches SPY/QQQ as benchmarks regardless of
+whether they're held in the portfolio.
 
 Usage:  python fetch_prices.py portfolio_template.csv prices.json
 Install: pip install yfinance
@@ -11,6 +13,8 @@ import json
 import csv
 import sys
 from datetime import datetime, timedelta
+
+BENCHMARK_TICKERS = ["SPY", "QQQ"]
 
 
 def fetch_options(t, ticker, current_price):
@@ -100,14 +104,14 @@ def fetch_options(t, ticker, current_price):
 
 def fetch_prices(tickers):
     result = {}
-    print(f"\nFetching YTD price + options data for: {', '.join(tickers)}\n")
-    year_start = f"{datetime.now().year}-01-01"
+    print(f"\nFetching 2-year price + options data for: {', '.join(tickers)}\n")
+    start_date = (datetime.now() - timedelta(days=730)).strftime("%Y-%m-%d")
 
     for ticker in tickers:
         print(f"  [{ticker}]")
         try:
             t = yf.Ticker(ticker)
-            hist = t.history(start=year_start)
+            hist = t.history(start=start_date)
 
             if hist.empty:
                 print(f"    No price data returned")
@@ -141,7 +145,7 @@ def fetch_prices(tickers):
                 clean_highs.append(round(float(h), 2))
                 clean_lows.append(round(float(l), 2))
 
-            print(f"    Price: ${current_price:.2f} | {len(clean_closes)} trading days YTD")
+            print(f"    Price: ${current_price:.2f} | {len(clean_closes)} trading days (2Y)")
 
             # Options flow
             options = fetch_options(t, ticker, current_price)
@@ -156,6 +160,44 @@ def fetch_prices(tickers):
                 "fetched_at": datetime.now().isoformat(),
             }
 
+        except Exception as e:
+            print(f"    Error: {e}")
+
+    return result
+
+
+def fetch_benchmarks(start_date):
+    """Fetch price history only (no options) for benchmark tickers — always
+    pulled regardless of whether the user holds them in their portfolio."""
+    result = {}
+    print(f"\nFetching benchmark data: {', '.join(BENCHMARK_TICKERS)}\n")
+    for ticker in BENCHMARK_TICKERS:
+        print(f"  [{ticker}] (benchmark)")
+        try:
+            t = yf.Ticker(ticker)
+            hist = t.history(start=start_date)
+            if hist.empty:
+                print(f"    No price data returned")
+                continue
+
+            closes = hist["Close"].tolist()
+            dates  = [d.strftime("%Y-%m-%d") for d in hist.index]
+
+            clean_closes = []
+            for p in closes:
+                if p != p:
+                    clean_closes.append(clean_closes[-1] if clean_closes else 0)
+                else:
+                    clean_closes.append(round(float(p), 2))
+
+            print(f"    {len(clean_closes)} trading days (2Y)")
+
+            result[ticker] = {
+                "history": [
+                    {"date": d, "price": p}
+                    for d, p in zip(dates, clean_closes)
+                ]
+            }
         except Exception as e:
             print(f"    Error: {e}")
 
@@ -190,9 +232,13 @@ if __name__ == "__main__":
     tickers = list({p["ticker"] for p in positions})
     prices  = fetch_prices(tickers)
 
+    start_date = (datetime.now() - timedelta(days=730)).strftime("%Y-%m-%d")
+    benchmarks = fetch_benchmarks(start_date)
+
     output = {
         "positions":    positions,
         "prices":       prices,
+        "benchmarks":   benchmarks,
         "generated_at": datetime.now().isoformat(),
     }
 
