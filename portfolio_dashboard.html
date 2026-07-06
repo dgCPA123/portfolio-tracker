@@ -43,6 +43,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13
 .pill-blue{background:var(--blue-dim);color:var(--blue)}
 .pill-dim{background:var(--surface2);color:var(--muted)}
 .refresh-btn{display:flex;align-items:center;gap:5px;padding:5px 11px;border-radius:6px;border:1px solid var(--border2);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;font-family:var(--font);transition:all .15s}
+.range-toggle{display:flex;gap:4px;background:var(--surface2);border-radius:7px;padding:3px}
+.range-btn{padding:5px 14px;border-radius:5px;border:none;background:transparent;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:var(--font);transition:all .15s}
+.range-btn:hover{color:var(--text)}
+.range-btn.active{background:var(--accent);color:#fff}
+.trend-stat{background:var(--surface2);border-radius:8px;padding:10px 16px;flex:1;min-width:130px}
+.trend-stat-label{font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.trend-stat-value{font-size:20px;font-weight:700;font-family:var(--mono)}
 .refresh-btn:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-dim)}
 .refresh-btn.spinning svg{animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -206,6 +213,7 @@ tr:hover td{background:var(--surface2);cursor:pointer}
       <button class="nav-btn active" onclick="showView('overview',this)">◈ &nbsp;Overview</button>
       <button class="nav-btn" onclick="showView('alloc',this)">◑ &nbsp;Allocation</button>
       <button class="nav-btn" onclick="showView('signals',this)">⚡ &nbsp;TA Signals</button>
+      <button class="nav-btn" onclick="showView('trend',this)">📈 &nbsp;Portfolio Trend</button>
     </div>
     <div class="nav-section" style="margin-top:10px">
       <div class="nav-label">Holdings</div>
@@ -398,6 +406,28 @@ tr:hover td{background:var(--surface2);cursor:pointer}
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px" id="signals-grid"></div>
       </div>
 
+      <!-- PORTFOLIO TREND -->
+      <div id="view-trend" style="display:none">
+        <div class="card" style="margin-bottom:14px">
+          <div class="card-header">
+            <span class="card-title">Portfolio vs. SPY vs. QQQ</span>
+            <div class="range-toggle" id="range-toggle">
+              <button class="range-btn active" data-range="YTD" onclick="setTrendRange('YTD',this)">YTD</button>
+              <button class="range-btn" data-range="1Y" onclick="setTrendRange('1Y',this)">1Y</button>
+              <button class="range-btn" data-range="2Y" onclick="setTrendRange('2Y',this)">2Y</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div id="trend-summary" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap"></div>
+            <div style="position:relative"><canvas id="c-trend" height="320"></canvas></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Performance breakdown</span></div>
+          <div class="card-body" id="trend-breakdown"></div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -436,6 +466,7 @@ function showCfgErr(msg){const e=document.getElementById('cfg-error');e.textCont
 // DATA
 // ═══════════════════════════════════════════════
 let POS=[],PRICES={},CLOSES={},HIGHS={},LOWS={},VOLS={},DATES={},OPTIONS={},PREV_CLOSES={},ROWS=[];
+let BENCH_CLOSES={},BENCH_DATES={};
 
 async function fetchAndInit(){
   const cfg=loadConfig();
@@ -484,6 +515,15 @@ function ingestData(data){
     OPTIONS[ticker]=info.options||null;
   });
   POS.forEach(p=>{if(!PRICES[p.t])PRICES[p.t]=p.cost;});
+
+  // Benchmarks (SPY/QQQ) — always available regardless of portfolio holdings
+  BENCH_CLOSES={};BENCH_DATES={};
+  Object.entries(data.benchmarks||{}).forEach(([ticker,info])=>{
+    const hist=info.history||[];
+    const valid=hist.filter(h=>!isNaN(h.price)&&h.price>0);
+    BENCH_CLOSES[ticker]=valid.map(h=>Math.round(h.price*100)/100);
+    BENCH_DATES[ticker]=valid.map(h=>h.date||'');
+  });
 }
 
 async function refreshData(){
@@ -498,6 +538,8 @@ async function refreshData(){
     renderAll();
     document.getElementById('last-refresh').textContent='Updated '+new Date().toLocaleTimeString();
     closeDetail();
+    const trendVisible=document.getElementById('view-trend').style.display!=='none';
+    if(trendVisible) renderTrendView(currentTrendRange);
   }catch(e){alert('Refresh failed: '+e.message);}
   btn.classList.remove('spinning');
 }
@@ -633,6 +675,31 @@ const CD={responsive:true,maintainAspectRatio:false,animation:false,
   plugins:{legend:{display:false},tooltip:{enabled:true,mode:'index',intersect:false,backgroundColor:'#13161e',titleColor:'#e8eaf2',bodyColor:'#6b7194',borderColor:'#2a2f3f',borderWidth:1}},
   elements:{point:{radius:0}}};
 function scaleOpts(cb=null){return{grid:{color:'#1e2230',drawBorder:false},ticks:{color:'#4a5070',font:{size:10,family:"'SF Mono','Fira Code',monospace"},maxTicksLimit:8,maxRotation:45,autoSkip:true,callback:cb||(v=>v)}};}
+
+// X-axis for date-based charts: only labels Mondays (+ first/last point) to give clean weekly spacing
+function xScaleOpts(rawDates){
+  return{
+    grid:{color:'#1e2230',drawBorder:false},
+    ticks:{
+      color:'#4a5070',
+      font:{size:10,family:"'SF Mono','Fira Code',monospace"},
+      autoSkip:false,
+      maxRotation:45,
+      minRotation:45,
+      callback:function(value,index){
+        const d=rawDates&&rawDates[index];
+        if(!d) return '';
+        const dt=new Date(d+'T12:00:00');
+        const isMonday=dt.getDay()===1;
+        const isEdge=index===0||index===rawDates.length-1;
+        if(!isMonday&&!isEdge) return '';
+        const parts=d.split('-');
+        const months=['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return months[parseInt(parts[1])]+' '+parseInt(parts[2]);
+      }
+    }
+  };
+}
 
 // ═══════════════════════════════════════════════
 // COMPUTE ROW
@@ -898,7 +965,7 @@ function sortH(col,th){
 // ═══════════════════════════════════════════════
 const dCharts={};
 let cachedNews=[];
-let currentDetail={r:null,labels:null,col:null};
+let currentDetail={r:null,labels:null,col:null,rawDates:null};
 let modalChart=null;
 
 async function openDetail(ticker){
@@ -917,7 +984,7 @@ async function openDetail(ticker){
   } else {
     labels=r.closes.map((_,i)=>'Day '+(i+1));
   }
-  currentDetail={r,labels,col};
+  currentDetail={r,labels,col,rawDates};
 
   // Always destroy all charts first before updating anything
   ['c-price','c-rsi','c-macd','c-vol','c-obv','c-adx','c-stoch'].forEach(id=>{if(dCharts[id]){dCharts[id].destroy();delete dCharts[id];}});
@@ -1052,31 +1119,31 @@ async function openDetail(ticker){
     {data:r.m20,borderColor:'#22c55e',borderWidth:1.5,borderDash:[4,3],fill:false,tension:0.3,label:'MA20'},
     {data:r.m50,borderColor:'#f59e0b',borderWidth:1.5,borderDash:[6,4],fill:false,tension:0.3,label:'MA50'},
     {data:r.m200,borderColor:'#ef4444',borderWidth:1.5,borderDash:[2,4],fill:false,tension:0.3,label:'MA200'},
-  ]},options:{...CD,plugins:{...CD.plugins,legend:{display:false}},scales:{x:scaleOpts(),y:scaleOpts(v=>'$'+v.toFixed(0))}}});
+  ]},options:{...CD,plugins:{...CD.plugins,legend:{display:false}},scales:{x:xScaleOpts(rawDates),y:scaleOpts(v=>'$'+v.toFixed(0))}}});
 
   // Volume
   dCharts['c-vol']=new Chart(document.getElementById('c-vol'),{type:'bar',data:{labels,datasets:[
     {type:'bar',data:r.vols,backgroundColor:r.closes.map((c,i)=>i===0||c>=r.closes[i-1]?'rgba(34,197,94,.6)':'rgba(239,68,68,.6)'),borderWidth:0,label:'Volume'},
     {type:'line',data:r.volMa20,borderColor:'#6366f1',borderWidth:1.5,fill:false,tension:0.3,pointRadius:0,borderDash:[4,3],label:'Vol MA20'},
-  ]},options:{...CD,scales:{x:scaleOpts(),y:scaleOpts(v=>fmtSI(v))}}});
+  ]},options:{...CD,scales:{x:xScaleOpts(rawDates),y:scaleOpts(v=>fmtSI(v))}}});
 
   // OBV
   dCharts['c-obv']=new Chart(document.getElementById('c-obv'),{type:'line',data:{labels,datasets:[
     {data:r.obvArr,borderColor:'#f97316',borderWidth:1.5,fill:true,backgroundColor:'rgba(249,115,22,.08)',tension:0.3,pointRadius:0,label:'OBV'},
     {data:r.obvMa20,borderColor:'#6366f1',borderWidth:1.5,fill:false,tension:0.3,pointRadius:0,borderDash:[4,3],label:'OBV MA20'},
-  ]},options:{...CD,scales:{x:scaleOpts(),y:scaleOpts(v=>fmtSI(v))}}});
+  ]},options:{...CD,scales:{x:xScaleOpts(rawDates),y:scaleOpts(v=>fmtSI(v))}}});
 
   // RSI
   dCharts['c-rsi']=new Chart(document.getElementById('c-rsi'),{type:'line',data:{labels,datasets:[
     {data:r.rsiArr,borderColor:'#3b82f6',borderWidth:1.5,fill:false,tension:0.3},
-  ]},options:{...CD,scales:{x:scaleOpts(),y:{...scaleOpts(),min:0,max:100}}}});
+  ]},options:{...CD,scales:{x:xScaleOpts(rawDates),y:{...scaleOpts(),min:0,max:100}}}});
 
   // MACD
   dCharts['c-macd']=new Chart(document.getElementById('c-macd'),{type:'bar',data:{labels,datasets:[
     {type:'bar',data:r.macdHist,backgroundColor:r.macdHist.map(v=>v>=0?'rgba(34,197,94,.65)':'rgba(239,68,68,.65)'),borderWidth:0,label:'Histogram'},
     {type:'line',data:r.macdLine,borderColor:'#3b82f6',borderWidth:1.5,fill:false,tension:0.3,pointRadius:0,label:'MACD'},
     {type:'line',data:r.macdSig,borderColor:'#f59e0b',borderWidth:1.5,fill:false,tension:0.3,pointRadius:0,borderDash:[4,3],label:'Signal'},
-  ]},options:{...CD,scales:{x:scaleOpts(),y:scaleOpts()}}});
+  ]},options:{...CD,scales:{x:xScaleOpts(rawDates),y:scaleOpts()}}});
 
   // ADX / DI
   document.getElementById('stoch-val-label').textContent=r.lastStochK!=null?`%K ${r.lastStochK.toFixed(1)} · %D ${r.lastStochD?.toFixed(1)??'—'}`:'';
@@ -1084,13 +1151,13 @@ async function openDetail(ticker){
     {data:r.adx,borderColor:'#8b5cf6',borderWidth:2,fill:false,tension:0.3,label:'ADX'},
     {data:r.plusDI,borderColor:'#22c55e',borderWidth:1.3,fill:false,tension:0.3,borderDash:[3,3],label:'+DI'},
     {data:r.minusDI,borderColor:'#ef4444',borderWidth:1.3,fill:false,tension:0.3,borderDash:[3,3],label:'−DI'},
-  ]},options:{...CD,scales:{x:scaleOpts(),y:{...scaleOpts(),min:0,suggestedMax:60}}}});
+  ]},options:{...CD,scales:{x:xScaleOpts(rawDates),y:{...scaleOpts(),min:0,suggestedMax:60}}}});
 
   // Stochastic %K/%D
   dCharts['c-stoch']=new Chart(document.getElementById('c-stoch'),{type:'line',data:{labels,datasets:[
     {data:r.stochK,borderColor:'#3b82f6',borderWidth:1.8,fill:false,tension:0.3,label:'%K'},
     {data:r.stochD,borderColor:'#f59e0b',borderWidth:1.5,fill:false,tension:0.3,borderDash:[4,3],label:'%D'},
-  ]},options:{...CD,scales:{x:scaleOpts(),y:{...scaleOpts(),min:0,max:100}}}});
+  ]},options:{...CD,scales:{x:xScaleOpts(rawDates),y:{...scaleOpts(),min:0,max:100}}}});
 
   // Takeaways
   const trendLabels=['Below all MAs — strong downtrend','Below MA50 & MA200 — weak trend','Above MA20 only — caution','Above MA20 & MA50 — building momentum','Full bull alignment — all MAs below price'];
@@ -1188,7 +1255,7 @@ function closeDetail(){
 }
 
 function expandPriceChart(){
-  const {r,labels,col}=currentDetail;
+  const {r,labels,col,rawDates}=currentDetail;
   if(!r) return;
   document.getElementById('chart-modal-title').textContent=`${r.t} — Price + Moving Averages`;
   document.getElementById('chart-modal-overlay').classList.add('open');
@@ -1198,7 +1265,7 @@ function expandPriceChart(){
     {data:r.m20,borderColor:'#22c55e',borderWidth:1.5,borderDash:[4,3],fill:false,tension:0.3,label:'MA20'},
     {data:r.m50,borderColor:'#f59e0b',borderWidth:1.5,borderDash:[6,4],fill:false,tension:0.3,label:'MA50'},
     {data:r.m200,borderColor:'#ef4444',borderWidth:1.5,borderDash:[2,4],fill:false,tension:0.3,label:'MA200'},
-  ]},options:{...CD,plugins:{...CD.plugins,legend:{display:true,labels:{color:'#8a90ab',font:{size:11},boxWidth:16,padding:14}}},scales:{x:{...scaleOpts(),ticks:{...scaleOpts().ticks,maxTicksLimit:16}},y:scaleOpts(v=>'$'+v.toFixed(0))}}});
+  ]},options:{...CD,plugins:{...CD.plugins,legend:{display:true,labels:{color:'#8a90ab',font:{size:11},boxWidth:16,padding:14}}},scales:{x:xScaleOpts(rawDates),y:scaleOpts(v=>'$'+v.toFixed(0))}}});
 }
 
 function closePriceChartModal(){
@@ -1267,16 +1334,149 @@ function renderSignals(){
 }
 
 // ═══════════════════════════════════════════════
+// PORTFOLIO TREND — vs SPY / QQQ
+// ═══════════════════════════════════════════════
+let currentTrendRange='YTD';
+let trendChart=null;
+
+function setTrendRange(range,btn){
+  currentTrendRange=range;
+  document.querySelectorAll('.range-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTrendView(range);
+}
+
+function buildCloseMap(dates,closes){
+  const m=new Map();
+  for(let i=0;i<dates.length;i++){ if(dates[i]) m.set(dates[i],closes[i]); }
+  return m;
+}
+
+function renderTrendView(range){
+  // Master timeline = SPY's date list (reliable, always fetched, full market calendar)
+  const masterDates = BENCH_DATES['SPY']||[];
+  if(!masterDates.length){
+    document.getElementById('trend-summary').innerHTML='';
+    document.getElementById('trend-breakdown').innerHTML='<div style="font-size:12px;color:var(--dim)">No benchmark data available. Re-run fetch_prices.py to pull SPY/QQQ history.</div>';
+    if(trendChart){trendChart.destroy();trendChart=null;}
+    return;
+  }
+
+  // Build per-ticker date->close maps for portfolio positions (carry-forward for gaps)
+  const posMaps=POS.map(p=>({t:p.t,sh:p.sh,map:buildCloseMap(DATES[p.t]||[],CLOSES[p.t]||[])}));
+
+  // Walk master timeline, carrying forward last known close per position
+  const lastKnown={};
+  POS.forEach(p=>{ const c=CLOSES[p.t]||[]; lastKnown[p.t]=c.length?c[0]:p.cost; });
+  const portfolioSeries=[];
+  masterDates.forEach(d=>{
+    let val=0;
+    posMaps.forEach(pm=>{
+      if(pm.map.has(d)) lastKnown[pm.t]=pm.map.get(d);
+      val+=lastKnown[pm.t]*pm.sh;
+    });
+    portfolioSeries.push(val);
+  });
+
+  const spySeries=BENCH_CLOSES['SPY']||[];
+  const qqqSeries=BENCH_CLOSES['QQQ']||[];
+
+  // Determine cutoff date for selected range
+  const now=new Date();
+  let cutoff=null;
+  if(range==='YTD') cutoff=`${now.getFullYear()}-01-01`;
+  else if(range==='1Y'){ const d=new Date(now); d.setDate(d.getDate()-365); cutoff=d.toISOString().slice(0,10); }
+  // '2Y' => no cutoff, use full history
+
+  let startIdx=0;
+  if(cutoff){
+    startIdx=masterDates.findIndex(d=>d>=cutoff);
+    if(startIdx===-1) startIdx=0;
+  }
+
+  const dates=masterDates.slice(startIdx);
+  const pSlice=portfolioSeries.slice(startIdx);
+  const sSlice=spySeries.slice(startIdx);
+  const qSlice=qqqSeries.slice(startIdx);
+
+  if(!dates.length||!pSlice.length){
+    document.getElementById('trend-summary').innerHTML='';
+    document.getElementById('trend-breakdown').innerHTML='<div style="font-size:12px;color:var(--dim)">Not enough history for this range yet.</div>';
+    if(trendChart){trendChart.destroy();trendChart=null;}
+    return;
+  }
+
+  // Normalize to % return since start of window
+  const normalize=arr=>{ const base=arr[0]||1; return arr.map(v=>((v/base)-1)*100); };
+  const pNorm=normalize(pSlice), sNorm=normalize(sSlice), qNorm=normalize(qSlice);
+
+  const pEnd=pNorm[pNorm.length-1]||0, sEnd=sNorm[sNorm.length-1]||0, qEnd=qNorm[qNorm.length-1]||0;
+
+  // Summary stat cards
+  document.getElementById('trend-summary').innerHTML=`
+    <div class="trend-stat">
+      <div class="trend-stat-label"><span style="width:8px;height:8px;border-radius:2px;background:#6366f1;display:inline-block"></span>My Portfolio</div>
+      <div class="trend-stat-value ${pEnd>=0?'g':'r'}">${pEnd>=0?'+':''}${pEnd.toFixed(2)}%</div>
+    </div>
+    <div class="trend-stat">
+      <div class="trend-stat-label"><span style="width:8px;height:8px;border-radius:2px;background:#f59e0b;display:inline-block"></span>SPY</div>
+      <div class="trend-stat-value ${sEnd>=0?'g':'r'}">${sEnd>=0?'+':''}${sEnd.toFixed(2)}%</div>
+    </div>
+    <div class="trend-stat">
+      <div class="trend-stat-label"><span style="width:8px;height:8px;border-radius:2px;background:#22c55e;display:inline-block"></span>QQQ</div>
+      <div class="trend-stat-value ${qEnd>=0?'g':'r'}">${qEnd>=0?'+':''}${qEnd.toFixed(2)}%</div>
+    </div>
+    <div class="trend-stat">
+      <div class="trend-stat-label">vs SPY</div>
+      <div class="trend-stat-value ${(pEnd-sEnd)>=0?'g':'r'}">${(pEnd-sEnd)>=0?'+':''}${(pEnd-sEnd).toFixed(2)}pp</div>
+    </div>
+    <div class="trend-stat">
+      <div class="trend-stat-label">vs QQQ</div>
+      <div class="trend-stat-value ${(pEnd-qEnd)>=0?'g':'r'}">${(pEnd-qEnd)>=0?'+':''}${(pEnd-qEnd).toFixed(2)}pp</div>
+    </div>`;
+
+  // Breakdown table — per-position contribution over this window
+  const posBreak=POS.map((p,i)=>{
+    const c=CLOSES[p.t]||[]; if(!c.length) return null;
+    const dIdx=DATES[p.t]?DATES[p.t].findIndex(d=>d>=dates[0]):-1;
+    const startPrice=dIdx>=0?c[dIdx]:c[0];
+    const endPrice=PRICES[p.t]||c[c.length-1];
+    const retPct=((endPrice/startPrice)-1)*100;
+    return{t:p.t,retPct,idx:i};
+  }).filter(Boolean).sort((a,b)=>b.retPct-a.retPct);
+
+  document.getElementById('trend-breakdown').innerHTML=`
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px">
+      ${posBreak.map(pb=>`<div style="background:var(--surface2);border-radius:7px;padding:8px 11px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+          <span style="width:6px;height:6px;border-radius:2px;background:${PALETTE[pb.idx%PALETTE.length]};display:inline-block"></span>
+          <span style="font-size:12px;font-weight:700">${pb.t}</span>
+        </div>
+        <div style="font-size:14px;font-weight:700;font-family:var(--mono);color:${pb.retPct>=0?'var(--green)':'var(--red)'}">${pb.retPct>=0?'+':''}${pb.retPct.toFixed(1)}%</div>
+      </div>`).join('')}
+    </div>`;
+
+  // Chart
+  if(trendChart){trendChart.destroy();trendChart=null;}
+  trendChart=new Chart(document.getElementById('c-trend'),{type:'line',data:{labels:dates,datasets:[
+    {data:pNorm,borderColor:'#6366f1',borderWidth:2.5,fill:true,backgroundColor:'rgba(99,102,241,0.08)',tension:0.25,pointRadius:0,label:'My Portfolio'},
+    {data:sNorm,borderColor:'#f59e0b',borderWidth:1.6,fill:false,tension:0.25,pointRadius:0,label:'SPY'},
+    {data:qNorm,borderColor:'#22c55e',borderWidth:1.6,fill:false,tension:0.25,pointRadius:0,label:'QQQ'},
+  ]},options:{...CD,plugins:{...CD.plugins,legend:{display:true,labels:{color:'#8a90ab',font:{size:11},boxWidth:16,padding:14}},tooltip:{...CD.plugins.tooltip,callbacks:{label:c=>`${c.dataset.label}: ${c.parsed.y>=0?'+':''}${c.parsed.y.toFixed(2)}%`}}},scales:{x:xScaleOpts(dates),y:scaleOpts(v=>(v>=0?'+':'')+v.toFixed(0)+'%')}}});
+}
+
+// ═══════════════════════════════════════════════
 // VIEWS & UTILS
 // ═══════════════════════════════════════════════
 function showView(name,el){
-  ['overview','alloc','signals'].forEach(v=>document.getElementById('view-'+v).style.display=v===name?'block':'none');
+  ['overview','alloc','signals','trend'].forEach(v=>document.getElementById('view-'+v).style.display=v===name?'block':'none');
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   if(el)el.classList.add('active');
-  document.getElementById('view-title').textContent={overview:'Overview',alloc:'Allocation',signals:'TA Signals'}[name];
+  document.getElementById('view-title').textContent={overview:'Overview',alloc:'Allocation',signals:'TA Signals',trend:'Portfolio Trend'}[name];
   if(name==='alloc')renderAlloc();
   if(name==='signals')renderSignals();
   if(name==='overview'){closeDetail();renderHoldings();}
+  if(name==='trend')renderTrendView(currentTrendRange);
 }
 function fmt(n,d=2){return n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});}
 function fmtSI(n){const a=Math.abs(n);if(a>=1e9)return(n/1e9).toFixed(1)+'B';if(a>=1e6)return(n/1e6).toFixed(1)+'M';if(a>=1e3)return(n/1e3).toFixed(0)+'K';return Math.round(n).toString();}
