@@ -20,7 +20,6 @@ TSLA,Robinhood,20,400
 NOW,Robinhood,10,126
 MSFT,Robinhood,1,393
 GOOGL,Robinhood,1,345
-ticker,platform,shares,Avg Cost
 CLLS,Robinhood,10,3.30
 FDMT,Robinhood,10,13.00
 GPCR,Robinhood,10,53.45
